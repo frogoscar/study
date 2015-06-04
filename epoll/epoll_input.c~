@@ -1,0 +1,57 @@
+#include <sys/epoll.h>
+#include <fcntl.h>
+
+#define MAX_BUF      1000   /* Maximum bytes fetched by a single read() */
+#define MAX_EVENTS      5   /* Maximum number of event to be returned from a single epoll_wait() call */
+
+int main(int argc, char *argv){
+  int epfd, ready, fd, s, j, numOpenFds;
+  struct epoll_event ev;
+  struct epoll_event evlist[MAX_EVENTS];
+  char buf[MAX_BUF];
+
+  if (argc < 2 || strcmp(argv[1], "--help") == 0){
+    printf("Usage: %s file\n", argv[0]);
+    return -1;
+  }
+
+  epfd = epoll_create1(0);
+  if(epfd == -1){
+    printf("Error: epoll_create() failed\n");
+    return -1;
+  }
+
+  /* Open each file on command line, and add it to the "interest list" for the epoll instance */
+
+  for(j=1; j < argc; j++){
+    fd = open(argv[j], O_RDONLY);
+    if (fd == -1)
+      perror("open");
+    printf("Opened \"%s\" on fd %d\n", argv[j], fd);
+
+    ev.events = EPOLLIN;   /* Only interested in input events */
+    ev.data.fd = fd;
+    if (epoll_ctl(epfd, EPOLL_CTL_ADD, fd, &ev) == -1){
+      perror("epoll_ctl");
+    }
+  }
+
+  numOpenFds = argc - 1;
+
+  while (numOpenFds > 0){
+    /* Fetch up to MAX_EVENTs items from the ready list */
+    printf("About to epoll_wait()\n");
+    ready = epoll_wait(epfd, evlist, MAX_EVENTS, -1);
+    if(ready == -1){
+      if (errno == EINTR)
+	continue;        /* Restart if interrupted by signal */
+      else{
+	perror("epoll_wait");
+	return -1;
+      }
+    }
+  }
+
+  printf("All file descriptors closed, bye\n");
+  return 0;
+}
